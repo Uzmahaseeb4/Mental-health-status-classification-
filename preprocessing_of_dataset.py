@@ -21,7 +21,7 @@ print("=" * 60)
 print("STEP 1 – Loading dataset")
 print("=" * 60)
 
-df = pd.read_csv("/content/archive.zip")
+df = pd.read_csv("/content/Dataset.zip")
 print(f"Raw shape          : {df.shape}")
 print(f"Columns            : {df.columns.tolist()}")
 print(f"Missing (text)     : {df['text'].isnull().sum()}")
