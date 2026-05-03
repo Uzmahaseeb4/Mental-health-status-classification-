@@ -73,7 +73,7 @@ print("✓ All libraries imported successfully")
 
 
 # ── Data ──────────────────────────────────────────────────────────────────────
-DATA_PATH  = "/content/bert_ready_dataset.csv"   # ← adjust if needed
+DATA_PATH  = "/content/Preprocessed_dataset.csv"   # ← adjust if needed
 OUTPUT_DIR = Path("/content/svm_output")
 SEED       = 42
 TEST_SPLIT = 0.10   # 10 % held out as final test  set
