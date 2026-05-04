@@ -16,27 +16,44 @@ import numpy as np
 from pathlib import Path
 import json
 
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.neighbors import NearestNeighbors
+
+try:
+    from imblearn.over_sampling import SMOTE
+    SMOTE_AVAILABLE = True
+except ImportError:
+    SMOTE_AVAILABLE = False
+
+DATA_PATH = Path("Dataset.zip")
+OUTPUT_CSV = Path("preprocessed_dataset.csv")
+TENSOR_PATH = Path("bert_tensors.pt")
+SUMMARY_PATH = Path("preprocessing_summary.json")
+
 # ── 1. LOAD ───────────────────────────────────────────────────────────────────
 print("=" * 60)
 print("STEP 1 – Loading dataset")
 print("=" * 60)
 
-df = pd.read_csv("/content/Dataset.zip")
+print(f"  Loading raw data from {DATA_PATH}")
+df = pd.read_csv(DATA_PATH)
+original_rows = len(df)
 print(f"Raw shape          : {df.shape}")
 print(f"Columns            : {df.columns.tolist()}")
 print(f"Missing (text)     : {df['text'].isnull().sum()}")
 print(f"Missing (title)    : {df['title'].isnull().sum()}")
 print(f"Target distribution:\n{df['target'].value_counts().sort_index()}\n")
 
-# Drop the unnamed index column
-df = df.drop(columns=["Unnamed: 0"])
+# Drop the unnamed index column if it exists
+if "Unnamed: 0" in df.columns:
+    df = df.drop(columns=["Unnamed: 0"])
 
 # ── 2. MISSING VALUE HANDLING ─────────────────────────────────────────────────
 print("=" * 60)
 print("STEP 2 – Handling missing values")
 print("=" * 60)
 
-before = len(df)
+before_missing = len(df)
 
 # Where text is NaN but title exists → use title as text
 mask_text_null_title_ok = df["text"].isnull() & df["title"].notna()
@@ -152,12 +169,47 @@ print("=" * 60)
 
 before_empty = len(df)
 df = df[df["clean_len"] >= 10].reset_index(drop=True)
-print(f"  Rows removed (< 10 chars) : {before_empty - len(df)}")
-print(f"  Final row count           : {len(df)}")
+after_near_empty = len(df)
+print(f"  Rows removed (< 10 chars) : {before_empty - after_near_empty}")
+print(f"  Final row count           : {after_near_empty}")
 
-# ── 7.TOKENIZATION ──────────────────────────────────────────────────────
+# ── 7. BALANCING WITH SMOTE ─────────────────────────────────────────────────
 print("\n" + "=" * 60)
-print("STEP 7 – BERT Tokenization")
+print("STEP 7 – Balancing dataset with SMOTE")
+print("=" * 60)
+
+if not SMOTE_AVAILABLE:
+    print("  [WARNING] imbalanced-learn is not installed; SMOTE balancing is skipped.")
+    print("  Install it with: pip install imbalanced-learn")
+else:
+    # Use TF-IDF to convert text into numeric features so SMOTE can operate.
+    print("  Vectorizing cleaned text for SMOTE ...")
+    vectorizer = TfidfVectorizer(max_features=4096, ngram_range=(1, 2), stop_words="english")
+    X = vectorizer.fit_transform(df["clean_text"].fillna(""))
+    y = df["target"].values
+
+    # Apply SMOTE to balance the classes
+    smote = SMOTE(random_state=42)
+    X_res, y_res = smote.fit_resample(X, y)
+
+    if len(y_res) == len(y):
+        print("  Dataset already balanced; no SMOTE samples added.")
+    else:
+        print(f"  SMOTE generated {len(y_res) - len(y)} synthetic samples.")
+
+    # Map resampled vectors back to the nearest original texts to preserve realistic samples.
+    print("  Mapping oversampled vectors to nearest original texts ...")
+    knn = NearestNeighbors(n_neighbors=1, metric="cosine")
+    knn.fit(X)
+    nearest_original = knn.kneighbors(X_res, return_distance=False).flatten()
+
+    df = df.iloc[nearest_original].reset_index(drop=True)
+    df["target"] = y_res
+    print(f"  Balanced target distribution:\n{df['target'].value_counts().sort_index()}\n")
+
+# ── 8.TOKENIZATION ──────────────────────────────────────────────────────
+print("\n" + "=" * 60)
+print("STEP 8 – BERT Tokenization")
 print("=" * 60)
 
 try:
@@ -204,9 +256,9 @@ try:
             "token_type_ids": token_type_ids,
             "labels": labels,
         },
-        "/content/bert_tensors.pt",
+        TENSOR_PATH,
     )
-    print("\n  Saved tokenized tensors → bert_tensors.pt")
+    print(f"\n  Saved tokenized tensors → {TENSOR_PATH}")
     tokenizer_saved = True
 
 except Exception as e:
@@ -214,40 +266,40 @@ except Exception as e:
     print("  (Install torch + transformers to enable tokenization)")
     tokenizer_saved = False
 
-# ── 8. SAVE CLEANED CSV ───────────────────────────────────────────────────────
+# ── 9. SAVE CLEANED CSV ───────────────────────────────────────────────────────
 print("\n" + "=" * 60)
-print("STEP 8 – Saving cleaned dataset")
+print("STEP 9 – Saving cleaned dataset")
 print("=" * 60)
 
 output_cols = ["clean_text", "title", "text", "target"]
 df_out = df[output_cols].copy()
-df_out.to_csv("/content/bert_ready_dataset.csv", index=False)
-print(f"  Saved: bert_ready_dataset.csv  ({len(df_out)} rows)")
+df_out.to_csv(OUTPUT_CSV, index=False)
+print(f"  Saved: {OUTPUT_CSV}  ({len(df_out)} rows)")
 
-# ── 9. SUMMARY REPORT ─────────────────────────────────────────────────────────
+# ── 10. SUMMARY REPORT ─────────────────────────────────────────────────────────
 print("\n" + "=" * 60)
 print("PREPROCESSING SUMMARY")
 print("=" * 60)
 
 summary = {
-    "original_rows": 5957,
+    "original_rows": int(original_rows),
     "after_missing_fill": int(before_dup),
     "after_dedup": int(before_empty),
     "final_rows": int(len(df)),
-    "rows_removed_total": int(5957 - len(df)),
+    "rows_removed_total": int(original_rows - len(df)),
     "missing_text_filled_from_title": int(mask_text_null_title_ok.sum()),
     "duplicates_removed": int(before_dup - before_empty),
-    "near_empty_removed": int(before_empty - len(df)),
+    "near_empty_removed": int(before_empty - after_near_empty),
     "target_distribution": df["target"].value_counts().sort_index().to_dict(),
     "avg_clean_text_chars": float(df["clean_len"].mean().round(1)),
     "tokenizer": "bert-base-uncased" if tokenizer_saved else "not applied (torch missing)",
     "max_seq_length": 512,
-    "output_files": ["bert_ready_dataset.csv"] + (["bert_tensors.pt"] if tokenizer_saved else []),
+    "output_files": [str(OUTPUT_CSV)] + ([str(TENSOR_PATH)] if tokenizer_saved else []),
 }
 
 print(json.dumps(summary, indent=2))
 
-with open("/content/preprocessing_summary.json", "w") as f:
+with open(SUMMARY_PATH, "w") as f:
     json.dump(summary, f, indent=2)
 
 print("\nDone! ✓")

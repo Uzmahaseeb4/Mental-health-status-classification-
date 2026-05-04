@@ -4,7 +4,7 @@
 # # 🤖 Model Training Notebook
 # ## Two Approaches: TF-IDF + SVM  ·  BERT Fine-Tuning
 # 
-# This notebook trains **two different models** on the same cleaned dataset produced by the preprocessing step (`bert_ready_dataset.csv`).
+# This notebook trains **two different models** on the same cleaned dataset produced by the preprocessing step (`preprocessed_dataset.csv`).
 # 
 # | | TF-IDF + SVM | BERT |
 # |---|---|---|
@@ -38,7 +38,8 @@
 
 
 # Install any missing packages (Colab usually has these already)
-get_ipython().system('pip install scikit-learn pandas numpy matplotlib seaborn --quiet')
+# If you need to install dependencies locally, run:
+# pip install scikit-learn pandas numpy matplotlib seaborn
 
 # ── Imports ──────────────────────────────────────────────────────────────────
 import os, json, pickle
@@ -73,8 +74,8 @@ print("✓ All libraries imported successfully")
 
 
 # ── Data ──────────────────────────────────────────────────────────────────────
-DATA_PATH  = "/content/Preprocessed_dataset.csv"   # ← adjust if needed
-OUTPUT_DIR = Path("/content/svm_output")
+DATA_PATH  = Path("preprocessed_dataset.csv")   # clearly point to the balanced cleaned dataset
+OUTPUT_DIR = Path("svm_output")
 SEED       = 42
 TEST_SPLIT = 0.10   # 10 % held out as final test  set
 VAL_SPLIT  = 0.10   # 10 % held out as validation set
@@ -396,7 +397,8 @@ print("proba = model.predict_proba(['your text here'])[0]")
 # In[ ]:
 
 
-get_ipython().system('pip install transformers torch scikit-learn pandas tqdm --quiet')
+# If you need to install dependencies locally, run:
+# pip install transformers torch scikit-learn pandas tqdm
 
 import os, json, random
 import numpy as np
@@ -441,8 +443,9 @@ if torch.cuda.is_available():
 
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-DATA_PATH   = "/content/bert_ready_dataset.csv"
-OUTPUT_DIR  = Path("/content/bert_output")
+DATA_PATH   = Path("preprocessed_dataset.csv")
+OUTPUT_DIR  = Path("bert_output")
+BEST_MODEL_DIR = OUTPUT_DIR / "best_model"
 SEED        = 42
 
 # ── Model ─────────────────────────────────────────────────────────────────────
@@ -710,7 +713,6 @@ print("✓ Training functions defined")
 history = {"train_loss": [], "train_acc": [],
            "val_loss":   [], "val_acc":   [], "val_f1": []}
 best_val_f1    = 0.0
-best_model_dir = OUTPUT_DIR / "best_model"
 
 # Enable mixed precision only if CUDA is available
 scaler = None
@@ -740,8 +742,9 @@ for epoch in range(1, EPOCHS + 1):
 
     if vl_f1 > best_val_f1:
         best_val_f1 = vl_f1
-        model.save_pretrained(str(best_model_dir))
-        tokenizer.save_pretrained(str(best_model_dir))
+        BEST_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(str(BEST_MODEL_DIR))
+        tokenizer.save_pretrained(str(BEST_MODEL_DIR))
         print(f"  ✓ Best model saved  (val_f1 = {best_val_f1:.4f})")
 
 print(f"\n✓ Training complete. Best val F1 = {best_val_f1:.4f}")
@@ -781,7 +784,7 @@ print("✓ Saved to bert_output/training_curves.png")
 # In[ ]:
 
 
-best_model = BertForSequenceClassification.from_pretrained(str(best_model_dir))
+best_model = BertForSequenceClassification.from_pretrained(str(BEST_MODEL_DIR))
 best_model = best_model.to(device)
 
 ts_loss, ts_acc, ts_f1, ts_preds, ts_labels = evaluate(
@@ -835,7 +838,7 @@ with open(OUTPUT_DIR / "bert_test_results.json", "w") as f:
     json.dump(results, f, indent=2)
 
 print("✓ Artifacts saved:")
-print(f"  Best model : {best_model_dir}/")
+print(f"  Best model : {BEST_MODEL_DIR}/")
 print(f"  History    : {OUTPUT_DIR}/training_history.json")
 print(f"  Results    : {OUTPUT_DIR}/bert_test_results.json")
 print("\nResults summary:")
@@ -891,7 +894,7 @@ def bert_predict(texts: list, model_dir: str, max_len: int = 256, batch_size: in
 
 # ── Quick test ────────────────────────────────────────────────────────────────
 sample_texts = ["i feel really hopeless today", "everything is going great"]
-preds, probs = bert_predict(sample_texts, str(best_model_dir), max_len=MAX_LEN)
+preds, probs = bert_predict(sample_texts, str(BEST_MODEL_DIR), max_len=MAX_LEN)
 for txt, pred, prob in zip(sample_texts, preds, probs):
     print(f"Text  : {txt}")
     print(f"Pred  : class {pred}   Proba: {[f'{p:.3f}' for p in prob]}")
@@ -907,7 +910,7 @@ for txt, pred, prob in zip(sample_texts, preds, probs):
 
 
 # Load results
-with open(OUTPUT_DIR.parent / "svm_output" / "svm_summary.json") as f:
+with open(Path("svm_output") / "svm_summary.json") as f:
     svm_res = json.load(f)
 with open(OUTPUT_DIR / "bert_test_results.json") as f:
     bert_res = json.load(f)
@@ -932,7 +935,7 @@ for p in ax.patches:
                 (p.get_x() + p.get_width() / 2, p.get_height() + 0.01),
                 ha="center", fontsize=9)
 plt.tight_layout()
-plt.savefig("/content/model_comparison.png", dpi=150)
+plt.savefig(Path("model_comparison.png"), dpi=150)
 plt.show()
 print("\n✓ Comparison chart saved.")
 
