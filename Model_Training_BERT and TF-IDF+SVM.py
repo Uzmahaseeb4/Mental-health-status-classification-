@@ -1,23 +1,5 @@
 #!/usr/bin/env python
-# coding: utf-8
 
-# # 🤖 Model Training Notebook
-# ## Two Approaches: TF-IDF + SVM  ·  BERT Fine-Tuning
-# 
-# This notebook trains **two different models** on the same cleaned dataset produced by the preprocessing step (`preprocessed_dataset.csv`).
-# 
-# | | TF-IDF + SVM | BERT |
-# |---|---|---|
-# | **Speed** | Seconds–minutes | Minutes–hours |
-# | **Hardware** | CPU only | GPU strongly recommended |
-# | **Accuracy** | Good baseline | State-of-the-art |
-# | **Deployment** | Tiny (`pickle` file) | Large (~400 MB) |
-# | **Interpretability** | High (feature weights) | Low (black box) |
-# 
-# **Run order:** Execute all cells top to bottom. Start with Section A (TF-IDF + SVM) — it trains fast and gives you a working model immediately. Section B (BERT) can then run on GPU for maximum accuracy.
-# 
-# ---
-# 
 
 # ---
 # # 📊 SECTION A — TF-IDF + SVM Training
